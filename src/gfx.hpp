@@ -15,4 +15,5 @@ namespace gfx {
     void print_info();
     void set_frames_per_second(unsigned);
     void close();
+    void oam_write(char);
 }

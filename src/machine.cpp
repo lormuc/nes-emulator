@@ -24,6 +24,7 @@ namespace {
     unsigned w_cyc;
     unsigned long step_count;
     unsigned long cycle_count;
+    bool odd_cycle;
 
     // registers
 
@@ -885,6 +886,14 @@ namespace {
         } else if (adr < 0x4000u) {
             adr &= 0x2007u;
             gfx::set(adr, val);
+        } else if (adr == 0x4014u) {
+            for (auto i = 0u; i < 0x100u; i++) {
+                gfx::oam_write(read_mem(make_adr(val, char(i))));
+            }
+            cycle_count += 513;
+            if (odd_cycle) {
+                cycle_count++;
+            }
         } else if (adr < 0x8000u) {
             bad = true;
         } else if (adr < 0x10000ul) {
@@ -1070,6 +1079,7 @@ void machine::cycle() {
         step();
     }
     cycle_count--;
+    odd_cycle = not odd_cycle;
 }
 
 void machine::halt() {
@@ -1100,5 +1110,6 @@ void machine::init() {
     reset_flag = 0;
     step_count = 0;
     cycle_count = 0;
+    odd_cycle = false;
     ready = true;
 }
