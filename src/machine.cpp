@@ -8,6 +8,7 @@
 #include "machine.hpp"
 #include "misc.hpp"
 #include "gfx.hpp"
+#include "input.hpp"
 
 namespace {
     bool reset_flag;
@@ -175,7 +176,6 @@ namespace {
 
     void process_interrupt() {
         if (nmi_flag) {
-            std::cout << "nmi\n";
             nmi_flag = 0;
             push_adr(pc);
             auto val = rp;
@@ -205,7 +205,7 @@ namespace {
         // machine::print_info();
 
         auto idf = get_interrupt_disable_flag();
-        if (nmi_flag or (not idf and (reset_flag or irq_flag))) {
+        if (nmi_flag or reset_flag or (not idf and irq_flag)) {
             process_interrupt();
             cycle_count = 6;
             return 0;
@@ -852,6 +852,8 @@ namespace {
         } else if (adr < 0x4000u) {
             adr &= 0x2007u;
             res = gfx::get(adr);
+        } else if (adr == 0x4016u) {
+            res = input::read();
         } else if (adr < 0x8000u) {
             bad = true;
         } else if (adr < 0x10000ul) {
@@ -894,6 +896,8 @@ namespace {
             if (odd_cycle) {
                 cycle_count++;
             }
+        } else if (adr == 0x4016u) {
+            input::write(val);
         } else if (adr < 0x8000u) {
             bad = true;
         } else if (adr < 0x10000ul) {
@@ -1028,22 +1032,22 @@ void machine::set_program_counter(t_adr adr) {
 }
 
 bool machine::load_program(const std::string& file) {
-    std::ifstream input(file, std::ios::binary);
-    if (!input.good()) {
+    std::ifstream is(file, std::ios::binary);
+    if (!is.good()) {
         return false;
     }
-    input.ignore(4);
+    is.ignore(4);
     char prg_sz;
-    input.read(&prg_sz, 1);
+    is.read(&prg_sz, 1);
     char chr_sz;
-    input.read(&chr_sz, 1);
-    input.ignore(10);
+    is.read(&chr_sz, 1);
+    is.ignore(10);
     if ((prg_sz != 1 and prg_sz != 2) or chr_sz != 1) {
         return false;
     }
     prg_rom.resize(prg_sz * 0x4000u);
-    input.read(&prg_rom[0], prg_rom.size());
-    gfx::load_pattern_table(input);
+    is.read(&prg_rom[0], prg_rom.size());
+    gfx::load_pattern_table(is);
     pc = 0x8000;
     return true;
 }
@@ -1103,11 +1107,11 @@ void machine::init() {
     ra = 0x00;
     rx = 0x00;
     ry = 0x00;
-    rp = 0x24;
+    rp = 0x34;
     std::fill(memory.begin(), memory.end(), 0x00);
     nmi_flag = 0;
     irq_flag = 0;
-    reset_flag = 0;
+    reset_flag = 1;
     step_count = 0;
     cycle_count = 0;
     odd_cycle = false;

@@ -13,12 +13,15 @@ const auto in_scr_height = 240u;
 const auto out_scr_width = in_scr_width * 2;
 const auto out_scr_height = in_scr_height * 2;
 
-const int sdl::key_right = SDL_SCANCODE_KP_6;
-const int sdl::key_left = SDL_SCANCODE_KP_4;
-const int sdl::key_down = SDL_SCANCODE_KP_5;
-const int sdl::key_up = SDL_SCANCODE_KP_8;
-const int sdl::key_left_trigger = SDL_SCANCODE_KP_1;
-const int sdl::key_right_trigger = SDL_SCANCODE_KP_3;
+const int sdl::key_kp_1 = SDL_SCANCODE_KP_1;
+const int sdl::key_kp_2 = SDL_SCANCODE_KP_2;
+const int sdl::key_kp_3 = SDL_SCANCODE_KP_3;
+const int sdl::key_kp_4 = SDL_SCANCODE_KP_4;
+const int sdl::key_kp_5 = SDL_SCANCODE_KP_5;
+const int sdl::key_kp_6 = SDL_SCANCODE_KP_6;
+const int sdl::key_kp_7 = SDL_SCANCODE_KP_7;
+const int sdl::key_kp_8 = SDL_SCANCODE_KP_8;
+const int sdl::key_kp_9 = SDL_SCANCODE_KP_9;
 
 std::array<bool, 1024> keyboard_state;
 

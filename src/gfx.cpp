@@ -13,12 +13,15 @@
 const auto transparent_pixel = char(0xff);
 const auto scanline_length = 341u;
 const auto scanline_count = 262u;
+const auto prerender_line = scanline_count - 1;
 
 const auto sprite_width = 8u;
 const auto sprite_height = 8u;
 
 namespace {
     char read_mem(unsigned);
+    char get_sprite_pattern_table_entry(unsigned);
+    char get_palette_entry(unsigned);
 }
 
 using t_sprite_data = std::array<char, sprite_width * sprite_height>;
@@ -79,15 +82,14 @@ public:
         pt_idx *= 16;
         pt_idx += y;
         x = 7 - x;
-        auto b0 = get_bit(read_mem(pt_idx), x);
-        auto b1 = get_bit(read_mem(pt_idx + 8), x);
+        auto b0 = get_bit(get_sprite_pattern_table_entry(pt_idx), x);
+        auto b1 = get_bit(get_sprite_pattern_table_entry(pt_idx + 8), x);
         auto b2 = get_bit(attr, 0);
         auto b3 = get_bit(attr, 1);
-        auto color_idx = bin_num({b0, b1, b2, b3, 1});
         if (b0 == 0 and b1 == 0) {
             return transparent_pixel;
         }
-        return read_mem(0x3f00u + color_idx);
+        return get_palette_entry(bin_num({b0, b1, b2, b3, 1}));
     }
 };
 
@@ -95,7 +97,6 @@ namespace {
     bool started;
 
     bool in_vblank;
-    bool nmi_output;
     unsigned long frame_idx;
 
     unsigned hor_cnt;
@@ -108,6 +109,8 @@ namespace {
 
     unsigned address;
     char oam_address;
+    char control_reg;
+    char data_read_buffer;
 
     class {
         bool latch;
@@ -125,8 +128,14 @@ namespace {
     std::vector<t_sprite> line_sprite_list;
     std::vector<t_sprite_data> line_sprite_data_list;
 
+    bool sprite_0_hit;
+
+    bool get_nmi_output_flag() {
+        return get_bit(control_reg, 7);
+    }
+
     void gen_nmi() {
-        if (in_vblank and nmi_output) {
+        if (in_vblank and get_nmi_output_flag()) {
             machine::set_nmi_flag();
         }
     }
@@ -213,6 +222,84 @@ namespace {
             }
         }
     }
+
+    unsigned get_nametable_address() {
+        unsigned arr[] = {0x2000, 0x2400, 0x2800, 0x2c00};
+        return arr[get_last_bits(control_reg, 2)];
+    }
+
+    unsigned get_attribute_table_address() {
+        return get_nametable_address() + 0x03c0u;
+    }
+
+    char get_nametable_entry(unsigned idx) {
+        return read_mem(get_nametable_address() + idx);
+    }
+
+    char get_nametable_entry(unsigned y, unsigned x) {
+        return get_nametable_entry(y * 32 + x);
+    }
+
+    char get_attribute_table_entry(unsigned idx) {
+        return read_mem(get_attribute_table_address() + idx);
+    }
+
+    char get_attribute_table_entry(unsigned y, unsigned x) {
+        return get_attribute_table_entry(y * 8 + x);
+    }
+
+    char get_palette_entry(unsigned idx) {
+        return read_mem(0x3f00u + idx);
+    }
+
+    char get_background_pattern_table_entry(unsigned idx) {
+        if (get_bit(control_reg, 4)) {
+            return read_mem(0x1000u + idx);
+        } else {
+            return read_mem(idx);
+        }
+    }
+
+    char background_get_pixel(unsigned y, unsigned x) {
+        auto bh = x % 8;
+        auto bv = y % 8;
+        unsigned pt_idx = get_nametable_entry(y / 8, x / 8);
+        pt_idx *= 16;
+        pt_idx += bv;
+        bh = 7 - bh;
+        auto b0 = get_bit(get_background_pattern_table_entry(pt_idx), bh);
+        auto b1 = get_bit(get_background_pattern_table_entry(pt_idx + 8), bh);
+
+        auto abx = x % 32;
+        auto aby = y % 32;
+        auto at = get_attribute_table_entry(y / 32, x / 32);
+        abx /= 16;
+        aby /= 16;
+        auto bb = (abx + aby * 2) * 2;
+        auto b2 = get_bit(at, bb);
+        auto b3 = get_bit(at, bb + 1);
+
+        if (b0 == 0 and b1 == 0) {
+            return transparent_pixel;
+        }
+        return get_palette_entry(bin_num({b0, b1, b2, b3}));
+    }
+
+    void increment_address() {
+        if (get_bit(control_reg, 2)) {
+            address += 32;
+        } else {
+            address += 1;
+        }
+    }
+
+    char get_sprite_pattern_table_entry(unsigned idx) {
+        if (get_bit(control_reg, 3)) {
+            return read_mem(0x1000u + idx);
+        } else {
+            return read_mem(idx);
+        }
+    }
 }
 
 void gfx::load_pattern_table(std::ifstream& ifs) {
@@ -230,6 +317,10 @@ void gfx::set_with_delay(unsigned adr, char val) {
 void gfx::set(unsigned adr, char val) {
     switch (adr) {
 
+    case 0x2000:
+        control_reg = val;
+        break;
+
     case 0x2003:
         oam_address = val;
         break;
@@ -241,7 +332,7 @@ void gfx::set(unsigned adr, char val) {
 
     case 0x2007:
         write_mem(address, val);
-        address++;
+        increment_address();
         break;
 
     }
@@ -253,9 +344,20 @@ char gfx::get(unsigned adr) {
     switch (adr) {
 
     case 0x2002:
+        set_bit(res, 6, sprite_0_hit);
         set_bit(res, 7, in_vblank);
         in_vblank = false;
         address_latch.reset();
+        break;
+
+    case 0x2007:
+        if (address < 0x3f00) {
+            res = data_read_buffer;
+            data_read_buffer = read_mem(address);
+        } else {
+            res = read_mem(address);
+        }
+        increment_address();
         break;
 
     }
@@ -270,12 +372,13 @@ bool gfx::init() {
     ver_cnt = 0;
 
     in_vblank = false;
-    nmi_output = true;
     frame_idx = 0;
 
     set_delay_active = false;
 
     oam_address = 0;
+    control_reg = 0;
+    sprite_0_hit = false;
 
     auto success = sdl::init();
 
@@ -356,34 +459,7 @@ void gfx::cycle() {
                 }
             }
 
-            auto th = x / 8;
-            auto bh = x % 8;
-            auto tv = y / 8;
-            auto bv = y % 8;
-            auto nm_idx = tv * 32 + th;
-            unsigned pt_idx = read_mem(0x2000u + nm_idx);
-            pt_idx *= 16;
-            pt_idx += bv;
-            bh = 7 - bh;
-            auto b0 = get_bit(read_mem(pt_idx), bh);
-            auto b1 = get_bit(read_mem(pt_idx + 8), bh);
-
-            auto ax = x / 32;
-            auto abx = x % 32;
-            auto ay = y / 32;
-            auto aby = y % 32;
-            auto at = read_mem(0x23c0u + ay * 8 + ax);
-            abx /= 16;
-            aby /= 16;
-            auto bb = (abx + aby * 2) * 2;
-            auto b2 = get_bit(at, bb);
-            auto b3 = get_bit(at, bb + 1);
-
-            auto color_idx = bin_num({b0, b1, b2, b3});
-            if (color_idx == 4 || color_idx == 8 || color_idx == 12) {
-                color_idx = 0;
-            }
-            auto background_pixel = read_mem(0x3f00u + color_idx);
+            auto background_pixel = background_get_pixel(y, x);
 
             auto pixel = background_pixel;
             if (background_pixel == transparent_pixel) {
@@ -391,6 +467,9 @@ void gfx::cycle() {
             }
             if (pixel_is_opaque(spr_pixel) and pixel_priority == 0) {
                 pixel = spr_pixel;
+            }
+            if (pixel == transparent_pixel) {
+                pixel = get_palette_entry(0);
             }
 
             if ((x % 32) == 0 || (y % 32) == 0) {
@@ -402,6 +481,10 @@ void gfx::cycle() {
                 sdl::render();
             }
         }
+    }
+
+    if (ver_cnt == prerender_line and hor_cnt == 1) {
+        sprite_0_hit = false;
     }
 
     if (ver_cnt == 241) {

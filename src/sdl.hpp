@@ -12,10 +12,13 @@ namespace sdl {
     void close();
 
     bool get_key(int);
-    extern const int key_right;
-    extern const int key_left;
-    extern const int key_down;
-    extern const int key_up;
-    extern const int key_left_trigger;
-    extern const int key_right_trigger;
+    extern const int key_kp_1;
+    extern const int key_kp_2;
+    extern const int key_kp_3;
+    extern const int key_kp_4;
+    extern const int key_kp_5;
+    extern const int key_kp_6;
+    extern const int key_kp_7;
+    extern const int key_kp_8;
+    extern const int key_kp_9;
 }
