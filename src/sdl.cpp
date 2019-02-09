@@ -10,8 +10,11 @@
 const auto in_scr_width = 256u;
 const auto in_scr_height = 240u;
 
+const auto overscan_top = 8u;
+const auto overscan_bot = 8u;
+
 const auto out_scr_width = in_scr_width * 2;
-const auto out_scr_height = in_scr_height * 2;
+const auto out_scr_height = (in_scr_height - (overscan_top + overscan_bot)) * 2;
 
 const int sdl::key_kp_1 = SDL_SCANCODE_KP_1;
 const int sdl::key_kp_2 = SDL_SCANCODE_KP_2;
@@ -112,17 +115,19 @@ void sdl::render() {
     }
     SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
     SDL_RenderClear(renderer);
-    for (unsigned idx = 0; idx < screen.size(); idx++) {
-        auto rgb = &palette[screen[idx]][0];
-        SDL_SetRenderDrawColor(renderer, rgb[0], rgb[1], rgb[2], 0xff);
-        auto i = idx % in_scr_width;
-        auto j = idx / in_scr_width;
-        auto rx = int(out_scr_width * i / in_scr_width);
-        auto ry = int(out_scr_height * j / in_scr_height);
-        auto rw = int(out_scr_width / in_scr_width);
-        auto rh = int(out_scr_height / in_scr_height);
-        SDL_Rect rect = { rx, ry, rw, rh };
-        SDL_RenderFillRect(renderer, &rect);
+    for (auto i = overscan_top; i < in_scr_height - overscan_bot; i++) {
+        for (auto j = 0u; j < in_scr_width; j++) {
+            auto idx = i * in_scr_width + j;
+            auto rgb = &palette[screen[idx]][0];
+            SDL_SetRenderDrawColor(renderer, rgb[0], rgb[1], rgb[2], 0xff);
+            auto ih = in_scr_height - overscan_top - overscan_bot;
+            auto rx = int(out_scr_width * j / in_scr_width);
+            auto ry = int(out_scr_height * (i - overscan_top) / ih);
+            auto rw = int(out_scr_width / in_scr_width);
+            auto rh = int(out_scr_height / ih);
+            SDL_Rect rect = { rx, ry, rw, rh };
+            SDL_RenderFillRect(renderer, &rect);
+        }
     }
     SDL_RenderPresent(renderer);
 

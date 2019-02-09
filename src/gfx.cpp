@@ -472,9 +472,9 @@ void gfx::cycle() {
                 pixel = get_palette_entry(0);
             }
 
-            if ((x % 32) == 0 || (y % 32) == 0) {
-                pixel = 0x14;
-            }
+            // if ((x % 32) == 0 || (y % 32) == 0) {
+            //     pixel = 0x14;
+            // }
 
             sdl::send_pixel(pixel);
             if (hor_cnt == 256 and ver_cnt == 239) {
