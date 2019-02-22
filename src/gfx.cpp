@@ -130,6 +130,13 @@ namespace {
 
     bool sprite_0_hit;
 
+    char scroll_x_start;
+    char scroll_y_start;
+
+    char scroll_x;
+    char scroll_y;
+    char scroll_nametable;
+
     bool get_nmi_output_flag() {
         return get_bit(control_reg, 7);
     }
@@ -223,31 +230,6 @@ namespace {
         }
     }
 
-    unsigned get_nametable_address() {
-        unsigned arr[] = {0x2000, 0x2400, 0x2800, 0x2c00};
-        return arr[get_last_bits(control_reg, 2)];
-    }
-
-    unsigned get_attribute_table_address() {
-        return get_nametable_address() + 0x03c0u;
-    }
-
-    char get_nametable_entry(unsigned idx) {
-        return read_mem(get_nametable_address() + idx);
-    }
-
-    char get_nametable_entry(unsigned y, unsigned x) {
-        return get_nametable_entry(y * 32 + x);
-    }
-
-    char get_attribute_table_entry(unsigned idx) {
-        return read_mem(get_attribute_table_address() + idx);
-    }
-
-    char get_attribute_table_entry(unsigned y, unsigned x) {
-        return get_attribute_table_entry(y * 8 + x);
-    }
-
     char get_palette_entry(unsigned idx) {
         return read_mem(0x3f00u + idx);
     }
@@ -260,29 +242,63 @@ namespace {
         }
     }
 
-    char background_get_pixel(unsigned y, unsigned x) {
-        auto bh = x % 8;
-        auto bv = y % 8;
-        unsigned pt_idx = get_nametable_entry(y / 8, x / 8);
+    unsigned get_scroll_nametable_address() {
+        unsigned arr[] = {0x2000, 0x2400, 0x2800, 0x2c00};
+        return arr[scroll_nametable];
+    }
+
+    char nametable_fetch() {
+        auto idx = (scroll_y / 8) * 32 + (scroll_x / 8);
+        return read_mem(get_scroll_nametable_address() + idx);
+    }
+
+    char attribute_table_fetch() {
+        auto idx = (scroll_y / 32) * 8 + (scroll_x / 32);
+        return read_mem(get_scroll_nametable_address() + 0x03c0u + idx);
+    }
+
+    char background_fetch_pixel() {
+        auto bh = scroll_x % 8;
+        auto bv = scroll_y % 8;
+        auto abx = scroll_x % 32;
+        auto aby = scroll_y % 32;
+        unsigned pt_idx = nametable_fetch();
+        auto at = attribute_table_fetch();
+
         pt_idx *= 16;
         pt_idx += bv;
         bh = 7 - bh;
         auto b0 = get_bit(get_background_pattern_table_entry(pt_idx), bh);
         auto b1 = get_bit(get_background_pattern_table_entry(pt_idx + 8), bh);
 
-        auto abx = x % 32;
-        auto aby = y % 32;
-        auto at = get_attribute_table_entry(y / 32, x / 32);
         abx /= 16;
         aby /= 16;
         auto bb = (abx + aby * 2) * 2;
         auto b2 = get_bit(at, bb);
         auto b3 = get_bit(at, bb + 1);
 
-        if (b0 == 0 and b1 == 0) {
-            return transparent_pixel;
+        scroll_x++;
+        if (scroll_x == scroll_x_start) {
+            scroll_y++;
+            if (scroll_y == 240) {
+                scroll_y = 0;
+                flip_bit(scroll_nametable, 1);
+            }
+            if (scroll_x_start != 0) {
+                flip_bit(scroll_nametable, 0);
+            }
+        } else if (scroll_x == 0) {
+            flip_bit(scroll_nametable, 0);
         }
-        return get_palette_entry(bin_num({b0, b1, b2, b3}));
+
+        char res;
+        if (b0 == 0 and b1 == 0) {
+            res = transparent_pixel;
+        } else {
+            res = get_palette_entry(bin_num({b0, b1, b2, b3}));
+        }
+
+        return res;
     }
 
     void increment_address() {
@@ -319,10 +335,24 @@ void gfx::set(unsigned adr, char val) {
 
     case 0x2000:
         control_reg = val;
+        scroll_nametable = get_last_bits(control_reg, 2);
         break;
 
     case 0x2003:
         oam_address = val;
+        break;
+
+    case 0x2005:
+        switch (address_latch.get_value()) {
+        case 0:
+            scroll_x_start = val;
+            scroll_x = val;
+            break;
+        case 1:
+            scroll_y_start = val;
+            scroll_y = val;
+            break;
+        }
         break;
 
     case 0x2006:
@@ -379,6 +409,13 @@ bool gfx::init() {
     oam_address = 0;
     control_reg = 0;
     sprite_0_hit = false;
+
+    scroll_x_start = 0;
+    scroll_y_start = 0;
+
+    scroll_x = 0;
+    scroll_y = 0;
+    scroll_nametable = 0;
 
     auto success = sdl::init();
 
@@ -459,7 +496,7 @@ void gfx::cycle() {
                 }
             }
 
-            auto background_pixel = background_get_pixel(y, x);
+            auto background_pixel = background_fetch_pixel();
 
             auto pixel = background_pixel;
             if (background_pixel == transparent_pixel) {
