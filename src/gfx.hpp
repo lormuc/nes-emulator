@@ -3,7 +3,7 @@
 #include <fstream>
 
 namespace gfx {
-    bool init();
+    int init();
     void load_pattern_table(std::ifstream&);
     bool is_running();
     bool is_waiting();
@@ -16,4 +16,5 @@ namespace gfx {
     void set_frames_per_second(unsigned);
     void close();
     void oam_write(char);
+    void set_mirroring(bool);
 }

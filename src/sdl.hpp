@@ -1,7 +1,7 @@
 #pragma once
 
 namespace sdl {
-    bool init();
+    int init();
     bool is_running();
     bool is_waiting();
     void render();
@@ -10,6 +10,9 @@ namespace sdl {
     void send_pixel(char);
     void set_frames_per_second(unsigned);
     void close();
+
+    void debug_render();
+    void debug_send_pixel(char);
 
     bool get_key(int);
     extern const int key_kp_1;

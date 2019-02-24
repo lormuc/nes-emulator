@@ -13,7 +13,7 @@ namespace machine {
     unsigned long get_cycle_counter();
     void print_info();
     char read_memory(t_adr);
-    bool load_program(const std::string&);
+    int load_program(const std::string&);
     void reset();
     void cycle();
     void halt();

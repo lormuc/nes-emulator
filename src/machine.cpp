@@ -202,6 +202,7 @@ namespace {
     }
 
     int step() {
+        //getchar();
         // machine::print_info();
 
         auto idf = get_interrupt_disable_flag();
@@ -501,7 +502,9 @@ namespace {
     }
 
     void i_lda() {
-        set_with_flags(adr_ra, read_mem(arg));
+        auto res = read_mem(arg);
+        set_with_flags(adr_ra, res);
+        std::cout << "lda #"; print_hex(res); std::cout << "\n";
         cycle_count += 2 + r_cyc;
     }
 
@@ -517,6 +520,9 @@ namespace {
 
     void i_sta() {
         cycle_count += 2 + w_cyc;
+        if (arg == 0xf0) {
+            std::cout << "sta result\n";
+        }
         write_mem(arg, ra);
     }
 
@@ -817,6 +823,7 @@ namespace {
         auto val = read_mem(arg);
         set_carry_flag(ra >= val);
         set_zero_flag(ra == val);
+        std::cout << "cmp #"; print_hex(val); std::cout << "\n";
         set_negative_flag(get_bit(ra - val, 7));
         cycle_count += 2 + r_cyc;
     }
@@ -844,7 +851,7 @@ namespace {
     }
 
     char read_mem(t_adr adr) {
-        char res;
+        char res = 0;
         bool bad = false;
         if (adr < 0x2000u) {
             adr %= 0x0800u;
@@ -873,6 +880,7 @@ namespace {
             default: bad = true; break;
             }
         }
+        bad = false;
         if (bad) {
             std::cout << "machine bad read_mem "; print_hex(adr); std::cout << "\n";
             res = 0x00;
@@ -912,6 +920,7 @@ namespace {
             default: bad = true; break;
             }
         }
+        bad = false;
         if (bad) {
             std::cout << "machine bad write_mem "; print_hex(adr); std::cout << "\n";
         }
@@ -1031,25 +1040,45 @@ void machine::set_program_counter(t_adr adr) {
     pc = adr;
 }
 
-bool machine::load_program(const std::string& file) {
+int machine::load_program(const std::string& file) {
     std::ifstream is(file, std::ios::binary);
     if (!is.good()) {
-        return false;
+        return failure;
     }
-    is.ignore(4);
+    std::vector<char> buf(4);
+    is.read(buf.data(), buf.size());
+    std::vector<char> signature = { 0x4e, 0x45, 0x53, 0x1a };
+    if (buf != signature) {
+        return failure;
+    }
     char prg_sz;
     is.read(&prg_sz, 1);
     char chr_sz;
     is.read(&chr_sz, 1);
-    is.ignore(10);
-    if ((prg_sz != 1 and prg_sz != 2) or chr_sz != 1) {
-        return false;
+    char flags;
+    is.read(&flags, 1);
+    if (get_bit(flags, 1) or get_bit(flags, 2) or get_bit(flags, 3)) {
+        return failure;
+    }
+    gfx::set_mirroring(get_bit(flags, 0));
+    char mapper;
+    mapper = get_bits(flags, 4, 4);
+    is.read(&flags, 1);
+    if (get_bit(flags, 0) or get_bit(flags, 1)) {
+        return failure;
+    }
+    set_bits(mapper, 4, 4, get_bits(flags, 4, 4));
+    is.ignore(8);
+    if (not ((prg_sz == 1 or prg_sz == 2) and (chr_sz == 0 or chr_sz == 1))) {
+        return failure;
     }
     prg_rom.resize(prg_sz * 0x4000u);
     is.read(&prg_rom[0], prg_rom.size());
-    gfx::load_pattern_table(is);
-    pc = 0x8000;
-    return true;
+    if (chr_sz == 1) {
+        gfx::load_pattern_table(is);
+    }
+    // pc = 0x8000;
+    return success;
 }
 
 char machine::read_memory(t_adr adr) {
@@ -1080,7 +1109,11 @@ void machine::cycle() {
         if (not ready) {
             return;
         }
-        step();
+        auto ret = step();
+        if (ret == -1) {
+            std::cout << "bad opcode\n";
+            exit(1);
+        }
     }
     cycle_count--;
     odd_cycle = not odd_cycle;

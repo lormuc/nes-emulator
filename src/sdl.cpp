@@ -107,6 +107,11 @@ namespace {
     bool running;
     bool frame_done;
     unsigned frames_per_second;
+
+    SDL_Window* debug_window;
+    SDL_Renderer* debug_renderer;
+    std::array<char, 4 * 256 * 240> debug_frame;
+    unsigned debug_frame_idx;
 }
 
 void sdl::render() {
@@ -140,6 +145,29 @@ void sdl::render() {
     frame_idx++;
 }
 
+void sdl::debug_send_pixel(char color) {
+    if (debug_frame_idx < debug_frame.size()) {
+        debug_frame[debug_frame_idx] = color;
+        debug_frame_idx++;
+    }
+}
+
+void sdl::debug_render() {
+    SDL_SetRenderDrawColor(debug_renderer, 0xff, 0xff, 0xff, 0xff);
+    SDL_RenderClear(debug_renderer);
+    auto idx = 0u;
+    for (auto i = 0u; i < out_scr_height; i++) {
+        for (auto j = 0u; j < out_scr_width; j++) {
+            auto c = &palette[debug_frame[idx]][0];
+            SDL_SetRenderDrawColor(debug_renderer, c[0], c[1], c[2], 0xff);
+            SDL_RenderDrawPoint(debug_renderer, j, i);
+            idx++;
+        }
+    }
+    SDL_RenderPresent(debug_renderer);
+    debug_frame_idx = 0;
+}
+
 void sdl::send_pixel(char color) {
     if (not drawing) {
         return;
@@ -150,10 +178,10 @@ void sdl::send_pixel(char color) {
     }
 }
 
-bool sdl::init() {
+int sdl::init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL init fail : " << SDL_GetError() << "\n";
-        return false;
+        return failure;
     }
 
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
@@ -161,20 +189,38 @@ bool sdl::init() {
     auto wu = SDL_WINDOWPOS_UNDEFINED;
     auto sw = out_scr_width;
     auto sh = out_scr_height;
-    window = SDL_CreateWindow("atari", wu, wu, sw, sh, SDL_WINDOW_SHOWN);
+
+    debug_window = SDL_CreateWindow("debug", wu, wu, sw, sh, SDL_WINDOW_SHOWN);
+    if (debug_window == nullptr) {
+        std::cerr << "create debug window fail : " << SDL_GetError() << "\n";
+        return failure;
+    }
+
+    debug_renderer = SDL_CreateRenderer(debug_window, -1, SDL_RENDERER_ACCELERATED);
+    if (debug_renderer == nullptr) {
+        std::cerr << "create debug renderer fail : " << SDL_GetError() << "\n";
+        return failure;
+    }
+    SDL_SetRenderDrawColor(debug_renderer, 0xff, 0xff, 0xff, 0xff);
+    SDL_RenderClear(debug_renderer);
+    SDL_RenderPresent(debug_renderer);
+    debug_frame_idx = 0;
+
+    window = SDL_CreateWindow("nes", wu, wu, sw, sh, SDL_WINDOW_SHOWN);
     if (window == nullptr) {
         std::cerr << "create window fail : " << SDL_GetError() << "\n";
-        return false;
+        return failure;
     }
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == nullptr) {
         std::cerr << "create renderer fail : " << SDL_GetError() << "\n";
-        return false;
+        return failure;
     }
     SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
+
 
     std::fill(screen.begin(), screen.end(), 0x00);
     scr_idx = 0;
@@ -186,7 +232,7 @@ bool sdl::init() {
 
     std::fill(keyboard_state.begin(), keyboard_state.end(), false);
 
-    return true;
+    return success;
 }
 
 void sdl::poll() {
@@ -232,6 +278,10 @@ void sdl::close() {
     renderer = nullptr;
     SDL_DestroyWindow(window);
     window = nullptr;
+
+    SDL_DestroyRenderer(debug_renderer);
+    SDL_DestroyWindow(debug_window);
+
     SDL_Quit();
 }
 

@@ -62,3 +62,14 @@ unsigned bin_num(const std::vector<bool>& v) {
     }
     return res;
 }
+
+char get_bits(char x, unsigned m, unsigned n) {
+    return (x >> m) & ((1u << n) - 1u);
+}
+
+void set_bits(char& x, unsigned m, unsigned n, char y) {
+    x &= ~(((1u << n) - 1u) << m);
+    y &= ((1u << n) - 1u);
+    y <<= m;
+    x |= y;
+}
