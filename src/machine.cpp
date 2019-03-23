@@ -26,6 +26,8 @@ namespace {
     unsigned long step_count;
     unsigned long cycle_count;
     bool odd_cycle;
+    std::string instr_arg_str;
+    unsigned cur_opcode;
 
     // registers
 
@@ -160,6 +162,7 @@ namespace {
     void push_adr(t_adr);
     t_adr pull_adr();
     void short_jump_if(bool);
+    const char* get_opcode_str(unsigned);
 
     // definitions
 
@@ -174,8 +177,19 @@ namespace {
         x = z;
     }
 
+    auto add_signed_offset(unsigned long adr, char ofs) {
+        if (ofs < 0x80u) {
+            adr += ofs;
+        } else {
+            ofs = ~ofs;
+            adr -= ofs + 1u;
+        }
+        return adr;
+    }
+
     void process_interrupt() {
         if (nmi_flag) {
+            // log_print_line("interrupt nmi");
             nmi_flag = 0;
             push_adr(pc);
             auto val = rp;
@@ -186,10 +200,12 @@ namespace {
             pc = read_mem_2(0xfffa);
         }
         if (reset_flag) {
+            // log_print_line("interrupt reset");
             reset_flag = 0;
             set_interrupt_disable_flag(1);
             pc = read_mem_2(0xfffc);
         } else if (irq_flag) {
+            // log_print_line("interrupt irq");
             irq_flag = 0;
             push_adr(pc);
             auto val = rp;
@@ -202,8 +218,7 @@ namespace {
     }
 
     int step() {
-        //getchar();
-        // machine::print_info();
+        // getchar();
 
         auto idf = get_interrupt_disable_flag();
         if (nmi_flag or reset_flag or (not idf and irq_flag)) {
@@ -212,12 +227,25 @@ namespace {
             return 0;
         }
 
+        // log_print_str("a "); log_print_hex(ra, 2);
+        // log_print_str(" | x "); log_print_hex(rx, 2);
+        // log_print_str(" | y "); log_print_hex(ry, 2);
+        // log_print_str(" | p "); log_print_hex(rp, 2);
+        // log_print_str(" | sp "); log_print_hex(sp, 2);
+        // log_print_str(" | ");
+
+        // log_print_hex(pc, 4);
+
         // fetch an instruction
-        auto opcode = read_mem(pc);
+        cur_opcode = read_mem(pc);
         pc++;
 
+        // log_print_str("  ");
+        // log_set_width(10);
+        // log_print_hex(cur_opcode, 2);
+
         // execute the given instruction
-        switch (opcode) {
+        switch (cur_opcode) {
         case 0x29: m_imm(); i_and(); break;
         case 0x25: m_zpg(); i_and(); break;
         case 0x35: m_zpx(); i_and(); break;
@@ -411,48 +439,89 @@ namespace {
     void m_imp() {
         r_cyc = 0;
         w_cyc = 0;
+        set_arg(0, 0);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str("\n");
     }
 
     void m_acc() {
         r_cyc = 0;
         w_cyc = 0;
         set_arg(adr_ra, 0);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" a");
+        // log_print_str("\n");
     }
 
     void m_imm() {
         r_cyc = 0;
         w_cyc = 0;
         set_arg(pc, 1);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" #$");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str("\n");
     }
 
     void m_rel() {
+        auto old_pc = pc;
         set_arg(pc, 1);
         r_cyc = 0;
         w_cyc = 0;
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(add_signed_offset(pc, read_mem(old_pc)), 4);
+        // log_print_str("\n");
     }
 
     void m_zpg() {
         r_cyc = 1;
         w_cyc = 1;
         set_arg(read_mem(pc), 1);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str("\n");
     }
 
     void m_zpx() {
         r_cyc = 2;
         w_cyc = 2;
         set_arg(char(read_mem(pc) + rx), 1);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str(",x");
+        // log_print_str("\n");
     }
 
     void m_zpy() {
         r_cyc = 2;
         w_cyc = 2;
         set_arg(char(read_mem(pc) + ry), 1);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str(",y");
+        // log_print_str("\n");
     }
 
     void m_abs() {
         r_cyc = 2;
         w_cyc = 2;
         set_arg(read_mem_2(pc), 2);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem_2(pc), 4);
+        // log_print_str("\n");
     }
 
     void m_abx() {
@@ -464,6 +533,12 @@ namespace {
         set_arg(make_adr(hi, lo), 2);
         r_cyc = 2 + carry;
         w_cyc = 3;
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem_2(pc), 4);
+        // log_print_str(",x");
+        // log_print_str("\n");
     }
 
     void m_aby() {
@@ -475,17 +550,35 @@ namespace {
         set_arg(make_adr(hi, lo), 2);
         r_cyc = 2 + carry;
         w_cyc = 3;
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" $");
+        // log_print_hex(read_mem_2(pc), 4);
+        // log_print_str(",y");
+        // log_print_str("\n");
     }
 
     void m_ind() {
         set_arg(read_mem_2(read_mem_2(pc)), 2);
         r_cyc = 4;
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" ($");
+        // log_print_hex(read_mem_2(pc), 4);
+        // log_print_str(")");
+        // log_print_str("\n");
     }
 
     void m_inx() {
         r_cyc = 4;
         w_cyc = 4;
         set_arg(read_mem_2(char(read_mem(pc) + rx)), 1);
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" ($");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str(",x)");
+        // log_print_str("\n");
     }
 
     void m_iny() {
@@ -499,12 +592,17 @@ namespace {
         set_arg(make_adr(hi, lo), 1);
         r_cyc = 3 + carry;
         w_cyc = 4;
+
+        // log_print_str(get_opcode_str(cur_opcode));
+        // log_print_str(" ($");
+        // log_print_hex(read_mem(pc), 2);
+        // log_print_str("),y");
+        // log_print_str("\n");
     }
 
     void i_lda() {
         auto res = read_mem(arg);
         set_with_flags(adr_ra, res);
-        std::cout << "lda #"; print_hex(res); std::cout << "\n";
         cycle_count += 2 + r_cyc;
     }
 
@@ -520,9 +618,6 @@ namespace {
 
     void i_sta() {
         cycle_count += 2 + w_cyc;
-        if (arg == 0xf0) {
-            std::cout << "sta result\n";
-        }
         write_mem(arg, ra);
     }
 
@@ -823,7 +918,6 @@ namespace {
         auto val = read_mem(arg);
         set_carry_flag(ra >= val);
         set_zero_flag(ra == val);
-        std::cout << "cmp #"; print_hex(val); std::cout << "\n";
         set_negative_flag(get_bit(ra - val, 7));
         cycle_count += 2 + r_cyc;
     }
@@ -866,7 +960,6 @@ namespace {
         } else if (adr < 0x10000ul) {
             adr -= 0x8000u;
             if (prg_rom.size() == 0x4000u) {
-                // std::cout << "here\n";
                 adr %= 0x4000u;
             }
             res = prg_rom[adr];
@@ -882,7 +975,8 @@ namespace {
         }
         bad = false;
         if (bad) {
-            std::cout << "machine bad read_mem "; print_hex(adr); std::cout << "\n";
+            // log_print_str("machine bad read_mem $"); log_print_hex(adr, 4);
+            // log_print_str("\n");
             res = 0x00;
         }
         return res;
@@ -922,7 +1016,8 @@ namespace {
         }
         bad = false;
         if (bad) {
-            std::cout << "machine bad write_mem "; print_hex(adr); std::cout << "\n";
+            // log_print_str("machine bad write_mem $"); log_print_hex(adr, 4);
+            // log_print_str("\n");
         }
     }
 
@@ -963,14 +1058,8 @@ namespace {
         cycle_count += 2;
         if (cond) {
             cycle_count++;
-            auto offset = read_mem(arg);
             char old_page = pc >> 8;
-            if (offset < 0x80u) {
-                pc += offset;
-            } else {
-                offset = ~offset;
-                pc -= offset + 1u;
-            }
+            pc = add_signed_offset(pc, read_mem(arg));
             char new_page = pc >> 8;
             if (new_page != old_page) {
                 cycle_count++;
@@ -980,7 +1069,171 @@ namespace {
 
     void set_arg(t_adr adr, int n) {
         arg = adr;
-        pc += n;
+        for (int i = 0; i < n; i++) {
+            // log_print_str(" ");
+            // log_print_hex(read_mem(pc), 2);
+            pc++;
+        }
+        // log_fill_with_space();
+    }
+
+    const char* get_opcode_str(unsigned op) {
+        switch (op) {
+        case 0x29: case 0x25: case 0x35: case 0x2d: case 0x3d: case 0x39:
+        case 0x21: case 0x31:
+            return "and";
+
+        case 0x49: case 0x45: case 0x55: case 0x4d: case 0x5d: case 0x59:
+        case 0x41: case 0x51:
+            return "eor";
+
+        case 0x09: case 0x05: case 0x15: case 0x0d: case 0x1d: case 0x19:
+        case 0x01: case 0x11:
+            return "ora";
+
+        case 0x24: case 0x2c:
+            return "bit";
+
+        case 0xa9: case 0xa5: case 0xb5: case 0xad: case 0xbd: case 0xb9:
+        case 0xa1: case 0xb1:
+            return "lda";
+
+        case 0xa2: case 0xa6: case 0xb6: case 0xae: case 0xbe:
+            return "ldx";
+
+        case 0xa0: case 0xa4: case 0xb4: case 0xac: case 0xbc:
+            return "ldy";
+
+        case 0x85: case 0x95: case 0x8d: case 0x9d: case 0x99: case 0x81:
+        case 0x91:
+            return "sta";
+
+        case 0x86: case 0x96: case 0x8e:
+            return "stx";
+
+        case 0x84: case 0x94: case 0x8c:
+            return "sty";
+
+        case 0xaa:
+            return "tax";
+        case 0xa8:
+            return "tay";
+        case 0x8a:
+            return "txa";
+        case 0x98:
+            return "tya";
+
+        case 0xe6: case 0xf6: case 0xee: case 0xfe:
+            return "inc";
+        case 0xe8:
+            return "inx";
+        case 0xc8:
+            return "iny";
+
+        case 0xc6: case 0xd6: case 0xce: case 0xde:
+            return "dec";
+        case 0xca:
+            return "dex";
+        case 0x88:
+            return "dey";
+
+        case 0x0a: case 0x06: case 0x16: case 0x0e: case 0x1e:
+            return "asl";
+
+        case 0x4a: case 0x46: case 0x56: case 0x4e: case 0x5e:
+            return "lsr";
+
+        case 0x2a: case 0x26: case 0x36: case 0x2e: case 0x3e:
+            return "rol";
+
+        case 0x6a: case 0x66: case 0x76: case 0x6e: case 0x7e: 
+            return "ror";
+
+        case 0xba:
+            return "tsx";
+        case 0x9a:
+            return "txs";
+        case 0x48:
+            return "pha";
+        case 0x08:
+            return "php";
+        case 0x68:
+            return "pla";
+        case 0x28:
+            return "plp";
+
+        case 0x4c: case 0x6c:
+            return "jmp";
+        case 0x20:
+            return "jsr";
+        case 0x60:
+            return "rts";
+
+        case 0x90:
+            return "bcc";
+        case 0xb0:
+            return "bcs";
+        case 0xf0:
+            return "beq";
+        case 0x30:
+            return "bmi";
+        case 0xd0:
+            return "bne";
+        case 0x10:
+            return "bpl";
+        case 0x50:
+            return "bvc";
+        case 0x70:
+            return "bvs";
+
+        case 0x18:
+            return "clc";
+        case 0xd8:
+            return "cld";
+        case 0x58:
+            return "cli";
+        case 0xb8:
+            return "clv";
+        case 0x38:
+            return "sec";
+        case 0xf8:
+            return "sed";
+        case 0x78:
+            return "sei";
+
+        case 0x69: case 0x65: case 0x75: case 0x6d: case 0x7d: case 0x79:
+        case 0x61: case 0x71:
+            return "adc";
+
+        case 0xe9: case 0xe5: case 0xf5: case 0xed: case 0xfd: case 0xf9:
+        case 0xe1: case 0xf1:
+            return "sbc";
+
+        case 0xc9: case 0xc5: case 0xd5: case 0xcd: case 0xdd: case 0xd9:
+        case 0xc1: case 0xd1:
+            return "cmp";
+
+        case 0xe0: case 0xe4: case 0xec:
+            return "cpx";
+
+        case 0xc0: case 0xc4: case 0xcc:
+            return "cpy";
+
+        case 0xea:
+            return "nop";
+        case 0x00:
+            return "brk";
+        case 0x40:
+            return "rti";
+
+        case 0x04:
+            return "nop";
+        case 0xe7:
+            return "isc";
+
+        default:
+            return "xxx";
+        }
     }
 
     void set_carry_flag(bool x) {
@@ -1111,7 +1364,8 @@ void machine::cycle() {
         }
         auto ret = step();
         if (ret == -1) {
-            std::cout << "bad opcode\n";
+            // log_print_line("error : bad opcode");
+            // log_print_line("exit");
             exit(1);
         }
     }

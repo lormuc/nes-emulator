@@ -3,10 +3,10 @@
 namespace sdl {
     int init();
     bool is_running();
-    bool is_waiting();
+    bool should_poll();
     void render();
     void poll();
-    void begin_drawing();
+    void start();
     void send_pixel(char);
     void set_frames_per_second(unsigned);
     void close();

@@ -13,8 +13,8 @@ const auto in_scr_height = 240u;
 const auto overscan_top = 8u;
 const auto overscan_bot = 8u;
 
-const auto out_scr_width = in_scr_width * 2;
-const auto out_scr_height = (in_scr_height - (overscan_top + overscan_bot)) * 2;
+const auto out_scr_width = in_scr_width * 1;
+const auto out_scr_height = (in_scr_height - (overscan_top + overscan_bot)) * 1;
 
 const int sdl::key_kp_1 = SDL_SCANCODE_KP_1;
 const int sdl::key_kp_2 = SDL_SCANCODE_KP_2;
@@ -103,21 +103,18 @@ namespace {
     unsigned scr_idx;
     long frame_idx;
     t_millisecond_timer timer;
-    bool drawing;
+    bool has_started;
     bool running;
     bool frame_done;
     unsigned frames_per_second;
-
-    SDL_Window* debug_window;
-    SDL_Renderer* debug_renderer;
-    std::array<char, 4 * 256 * 240> debug_frame;
-    unsigned debug_frame_idx;
+    bool has_polled_after_rendering;
 }
 
 void sdl::render() {
-    if (not drawing) {
+    if (not has_started) {
         return;
     }
+
     SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
     SDL_RenderClear(renderer);
     for (auto i = overscan_top; i < in_scr_height - overscan_bot; i++) {
@@ -143,33 +140,11 @@ void sdl::render() {
     scr_idx = 0;
     frame_done = true;
     frame_idx++;
-}
-
-void sdl::debug_send_pixel(char color) {
-    if (debug_frame_idx < debug_frame.size()) {
-        debug_frame[debug_frame_idx] = color;
-        debug_frame_idx++;
-    }
-}
-
-void sdl::debug_render() {
-    SDL_SetRenderDrawColor(debug_renderer, 0xff, 0xff, 0xff, 0xff);
-    SDL_RenderClear(debug_renderer);
-    auto idx = 0u;
-    for (auto i = 0u; i < out_scr_height; i++) {
-        for (auto j = 0u; j < out_scr_width; j++) {
-            auto c = &palette[debug_frame[idx]][0];
-            SDL_SetRenderDrawColor(debug_renderer, c[0], c[1], c[2], 0xff);
-            SDL_RenderDrawPoint(debug_renderer, j, i);
-            idx++;
-        }
-    }
-    SDL_RenderPresent(debug_renderer);
-    debug_frame_idx = 0;
+    has_polled_after_rendering = false;
 }
 
 void sdl::send_pixel(char color) {
-    if (not drawing) {
+    if (not has_started) {
         return;
     }
     if (scr_idx < screen.size()) {
@@ -180,7 +155,7 @@ void sdl::send_pixel(char color) {
 
 int sdl::init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "SDL init fail : " << SDL_GetError() << "\n";
+        std::cerr << "sdl init fail : " << SDL_GetError() << "\n";
         return failure;
     }
 
@@ -190,45 +165,29 @@ int sdl::init() {
     auto sw = out_scr_width;
     auto sh = out_scr_height;
 
-    debug_window = SDL_CreateWindow("debug", wu, wu, sw, sh, SDL_WINDOW_SHOWN);
-    if (debug_window == nullptr) {
-        std::cerr << "create debug window fail : " << SDL_GetError() << "\n";
-        return failure;
-    }
-
-    debug_renderer = SDL_CreateRenderer(debug_window, -1, SDL_RENDERER_ACCELERATED);
-    if (debug_renderer == nullptr) {
-        std::cerr << "create debug renderer fail : " << SDL_GetError() << "\n";
-        return failure;
-    }
-    SDL_SetRenderDrawColor(debug_renderer, 0xff, 0xff, 0xff, 0xff);
-    SDL_RenderClear(debug_renderer);
-    SDL_RenderPresent(debug_renderer);
-    debug_frame_idx = 0;
-
     window = SDL_CreateWindow("nes", wu, wu, sw, sh, SDL_WINDOW_SHOWN);
     if (window == nullptr) {
-        std::cerr << "create window fail : " << SDL_GetError() << "\n";
+        std::cerr << "sdl create window fail : " << SDL_GetError() << "\n";
         return failure;
     }
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == nullptr) {
-        std::cerr << "create renderer fail : " << SDL_GetError() << "\n";
+        std::cerr << "sdl create renderer fail : " << SDL_GetError() << "\n";
         return failure;
     }
     SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
-
     std::fill(screen.begin(), screen.end(), 0x00);
     scr_idx = 0;
     frame_idx = 0;
     frame_done = false;
     running = true;
-    drawing = false;
+    has_started = false;
     frames_per_second = 60;
+    has_polled_after_rendering = false;
 
     std::fill(keyboard_state.begin(), keyboard_state.end(), false);
 
@@ -255,8 +214,12 @@ bool sdl::is_running() {
     return running;
 }
 
-bool sdl::is_waiting() {
+bool sdl::should_poll() {
     if (frame_done) {
+        if (not has_polled_after_rendering) {
+            has_polled_after_rendering = true;
+            return true;
+        }
         if (frames_per_second * timer.get_ticks() < 1000 * frame_idx) {
             return true;
         } else {
@@ -267,9 +230,11 @@ bool sdl::is_waiting() {
     return false;
 }
 
-void sdl::begin_drawing() {
-    drawing = true;
-    timer.reset();
+void sdl::start() {
+    if (not has_started) {
+        has_started = true;
+        timer.reset();
+    }
 }
 
 void sdl::close() {
@@ -278,9 +243,6 @@ void sdl::close() {
     renderer = nullptr;
     SDL_DestroyWindow(window);
     window = nullptr;
-
-    SDL_DestroyRenderer(debug_renderer);
-    SDL_DestroyWindow(debug_window);
 
     SDL_Quit();
 }

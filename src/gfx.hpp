@@ -6,7 +6,7 @@ namespace gfx {
     int init();
     void load_pattern_table(std::ifstream&);
     bool is_running();
-    bool is_waiting();
+    bool should_poll();
     void set(unsigned, char);
     void set_with_delay(unsigned, char);
     char get(unsigned);

@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     gfx::set_frames_per_second(fps);
 
     while (gfx::is_running()) {
-        if (gfx::is_waiting()) {
+        if (gfx::should_poll()) {
             gfx::poll();
         } else {
             gfx::cycle();
