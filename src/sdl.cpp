@@ -7,14 +7,16 @@
 #include "misc.hpp"
 #include "sdl.hpp"
 
+const auto fps_update_interval_ms = 500u;
+
 const auto in_scr_width = 256u;
 const auto in_scr_height = 240u;
 
 const auto overscan_top = 8u;
 const auto overscan_bot = 8u;
 
-const auto out_scr_width = in_scr_width * 1;
-const auto out_scr_height = (in_scr_height - (overscan_top + overscan_bot)) * 1;
+const auto out_scr_width = in_scr_width * 2;
+const auto out_scr_height = (in_scr_height - (overscan_top + overscan_bot)) * 2;
 
 const int sdl::key_kp_1 = SDL_SCANCODE_KP_1;
 const int sdl::key_kp_2 = SDL_SCANCODE_KP_2;
@@ -106,8 +108,11 @@ namespace {
     bool has_started;
     bool running;
     bool frame_done;
-    unsigned frames_per_second;
+    unsigned max_frames_per_second;
     bool has_polled_after_rendering;
+    long fps_frame_count;
+    long fps_last_update;
+    long cur_fps;
 }
 
 void sdl::render() {
@@ -133,9 +138,16 @@ void sdl::render() {
     }
     SDL_RenderPresent(renderer);
 
-    char buf[0x10];
-    std::snprintf(buf, 0x10, "%05ld", frame_idx);
-    SDL_SetWindowTitle(window, buf);
+    if (timer.get_ticks() > fps_last_update + fps_update_interval_ms) {
+        cur_fps = fps_frame_count * 1000 / fps_update_interval_ms;
+        fps_last_update = timer.get_ticks();
+        fps_frame_count = 0;
+    }
+    fps_frame_count++;
+
+    std::array<char, 0x40> buf;
+    std::snprintf(&buf[0], buf.size(), "%05ld fps %03ld", frame_idx, cur_fps);
+    SDL_SetWindowTitle(window, &buf[0]);
 
     scr_idx = 0;
     frame_done = true;
@@ -186,8 +198,11 @@ int sdl::init() {
     frame_done = false;
     running = true;
     has_started = false;
-    frames_per_second = 60;
+    max_frames_per_second = 60;
     has_polled_after_rendering = false;
+    fps_frame_count = 0;
+    fps_last_update = 0;
+    cur_fps = 0;
 
     std::fill(keyboard_state.begin(), keyboard_state.end(), false);
 
@@ -220,7 +235,7 @@ bool sdl::should_poll() {
             has_polled_after_rendering = true;
             return true;
         }
-        if (frames_per_second * timer.get_ticks() < 1000 * frame_idx) {
+        if (max_frames_per_second * timer.get_ticks() < 1000 * frame_idx) {
             return true;
         } else {
             frame_done = false;
@@ -257,5 +272,5 @@ bool sdl::get_key(int sc) {
 }
 
 void sdl::set_frames_per_second(unsigned val) {
-    frames_per_second = val;
+    max_frames_per_second = val;
 }

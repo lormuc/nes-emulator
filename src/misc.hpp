@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <chrono>
+#include <cstdio>
 
 class t_millisecond_timer {
     std::chrono::time_point<std::chrono::steady_clock> t0;
@@ -17,6 +18,7 @@ public:
     }
 };
 
+void debug_print(FILE*, const char*, ...);
 bool get_bit(unsigned, unsigned);
 void set_bit(char&, unsigned, bool = 1);
 void set_bit(unsigned&, unsigned, bool = 1);

@@ -1,7 +1,20 @@
 #include <cstdio>
 #include <iostream>
+#include <cstdarg>
 
 #include "misc.hpp"
+
+const auto debug_mode = true;
+
+void debug_print(FILE* fp, const char* fmt, ...) {
+    if (not debug_mode) {
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(fp, fmt, ap);
+    va_end(ap);
+}
 
 bool get_bit(unsigned x, unsigned n) {
     return x & (1u << n);

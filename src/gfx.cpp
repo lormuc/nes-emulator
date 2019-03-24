@@ -11,8 +11,6 @@
 #include "machine.hpp"
 #include "sdl.hpp"
 
-#define fprintf
-
 const auto transparent_pixel = char(0xff);
 const auto scanline_length = 341u;
 const auto scanline_count = 262u;
@@ -42,12 +40,12 @@ namespace {
                 auto m1 = spr_pat_get(idx, i, 1);
                 auto mm = get_bit(m1, 7 - j) * 2u + get_bit(m0, 7 - j);
                 if (mm == 0) {
-                    fprintf(log, " ");
+                    debug_print(log, " ");
                 } else {
-                    fprintf(log, "%u", mm);
+                    debug_print(log, "%u", mm);
                 }
             }
-            fprintf(log, "\n");
+            debug_print(log, "\n");
         }
     }
 
@@ -99,11 +97,11 @@ namespace {
     unsigned cur_adr;
 
     void set_v(unsigned x) {
-        // fprintf(log, "(%03u, %03u) v :  %03x %02x %05x %05x\n",
+        // debug_print(log, "(%03u, %03u) v :  %03x %02x %05x %05x\n",
         //         hor_cnt, ver_cnt,
         //         get_bits(x, 12, 3), get_bits(x, 10, 2),
         //         get_bits(x, 5, 5), get_bits(x, 0, 5));
-        fprintf(log, "(%03u, %03u) v = $%04x\n", hor_cnt, ver_cnt, x);
+        debug_print(log, "(%03u, %03u) v = $%04x\n", hor_cnt, ver_cnt, x);
         cur_adr = x;
     }
 
@@ -210,7 +208,6 @@ namespace {
             adr -= 0x10;
         }
         char res = 0;
-        bool bad = false;
         if (adr < 0x2000u) {
             res = pattern_table[adr];
         } else if (adr < 0x3effu) {
@@ -311,30 +308,30 @@ namespace {
         set_bits(res, 6, 4);
         copy_bits(res, 10, 2, adr, 10);
         set_bit(res, 13);
-        fprintf(log, "gaa res = %04x\n", res);
+        debug_print(log, "gaa res = %04x\n", res);
         return res;
     }
 
     void fetch_nametable_byte() {
         nt_byte = read_mem(get_tile_address(get_v()));
-        fprintf(log, "fetch nt byte %02hhx\n", nt_byte);
+        debug_print(log, "fetch nt byte %02hhx\n", nt_byte);
     }
 
     void fetch_attribute_table_byte() {
         at_byte = read_mem(get_attribute_address(get_v()));
-        fprintf(log, "fetchl at byte %02hhx\n", at_byte);
+        debug_print(log, "fetchl at byte %02hhx\n", at_byte);
     }
 
     void fetch_tile_bitmap_low() {
         auto fy = get_fine_y_scroll();
         tile_bitmap_low = get_bg_pattern_table_entry(nt_byte, fy, 0);
-        fprintf(log, "fetch tile bitmap low %02hhx\n", tile_bitmap_low);
+        debug_print(log, "fetch tile bitmap low %02hhx\n", tile_bitmap_low);
     }
 
     void fetch_tile_bitmap_high() {
         auto fy = get_fine_y_scroll();
         tile_bitmap_high = get_bg_pattern_table_entry(nt_byte, fy, 1);
-        fprintf(log, "fetch tile bitmap high %02hhx\n", tile_bitmap_high);
+        debug_print(log, "fetch tile bitmap high %02hhx\n", tile_bitmap_high);
     }
 
     void inc_hor_scroll() {
@@ -389,7 +386,7 @@ namespace {
         auto ys = (get_coarse_y_scroll() * 8 + get_fine_y_scroll()) % 32;
         ys /= 16;
         auto i = xs + ys * 2;
-        fprintf(log, "get_bit at_byte %u\n", 2 * i + j);
+        debug_print(log, "get_bit at_byte %u\n", 2 * i + j);
         if (get_bit(at_byte, 2 * i + j)) {
             return 0xff;
         } else {
@@ -413,10 +410,10 @@ namespace {
         auto spr_priority = 0;
         for (auto i = 0u; i < 8u; i++) {
             if (spr_active[i]) {
-                fprintf(log, "spr active %u\n", i);
-                fprintf(log, "spr bitmap lo %02hhx\n", spr_bitmap_lo[i]);
-                fprintf(log, "spr bitmap hi %02hhx\n", spr_bitmap_hi[i]);
-                fprintf(log, "spr atr       %02hhx\n", spr_atr[i]);
+                debug_print(log, "spr active %u\n", i);
+                debug_print(log, "spr bitmap lo %02hhx\n", spr_bitmap_lo[i]);
+                debug_print(log, "spr bitmap hi %02hhx\n", spr_bitmap_hi[i]);
+                debug_print(log, "spr atr       %02hhx\n", spr_atr[i]);
                 auto b0 = get_bit(spr_bitmap_lo[i], 7);
                 auto b1 = get_bit(spr_bitmap_hi[i], 7);
                 auto b2 = get_bit(spr_atr[i], 0);
@@ -429,8 +426,9 @@ namespace {
                             }
                         }
                     }
-                    spr_pixel = get_palette_entry(bin_num_le({b0, b1, b2, b3, 1}));
-                    fprintf(log, "pix $%02hhx\n", spr_pixel);
+                    auto pal_idx = bin_num_le({b0, b1, b2, b3, 1});
+                    spr_pixel = get_palette_entry(pal_idx);
+                    debug_print(log, "pix $%02hhx\n", spr_pixel);
                     spr_priority = get_sprite_priority(i);
                     break;
                 }
@@ -464,14 +462,14 @@ namespace {
                 if (sec_oam_idx < sec_oam.size()) {
                     sec_oam[sec_oam_idx] = oam_data;
                     auto inr = in_range(ver_cnt, oam_data, oam_data + 8);
-                    // fprintf(log, "in_range %u %u %u ?\n", y, oam_data, oam_data + 8);
+                    // auto d = oam_data;
+                    // debug_print(log, "in_range %u %u %u ?\n", y, d, d + 8);
                     if (oam_idx == 0) {
                         sprite_0_y_in_range_next = inr;
                     }
                     if (copy_cnt > 0 or inr) {
-                        // fprintf(log, "%03u : %03u match\n", ver_cnt, oam_idx / 4);
                         sec_oam_idx++;
-                        // fprintf(log, "sec_idx = %02u\n", sec_oam_idx);
+                        // debug_print(log, "sec_idx = %02u\n", sec_oam_idx);
                         oam_idx++;
                         copy_cnt++;
                         if (copy_cnt == 4) {
@@ -488,17 +486,17 @@ namespace {
             }
         }
         if (hor_cnt == 256) {
-            fprintf(log, "sec\n");
+            debug_print(log, "sec\n");
             auto i = 0u;
             while (i < 32) {
                 for (auto j = 0u; j < 4; j++) {
                     for (auto k = 0u; k < 4; k++) {
-                        fprintf(log, " %02hhx ", sec_oam[i]);
+                        debug_print(log, " %02hhx ", sec_oam[i]);
                         i++;
                     }
-                    fprintf(log, " | ");
+                    debug_print(log, " | ");
                 }
-                fprintf(log, "\n");
+                debug_print(log, "\n");
             }
         }
     }
@@ -515,7 +513,7 @@ namespace {
             break;
         case 1:
             tmp_spr_idx = read_sec_oam(q, spr_idx_ofs);
-            // fprintf(log, "tile # %u\n", tmp_spr_idx);
+            // debug_print(log, "tile # %u\n", tmp_spr_idx);
             // print_tile(tmp_spr_idx);
             break;
         case 2:
@@ -551,11 +549,11 @@ namespace {
             break;
         }
         if (hor_cnt == 320) {
-            fprintf(log, "spr_x : ");
+            debug_print(log, "spr_x : ");
             for (auto i = 0u; i < 8; i++) {
-                fprintf(log, " %02hhx", spr_x[i]);
+                debug_print(log, " %02hhx", spr_x[i]);
             }
-            fprintf(log, "\n");
+            debug_print(log, "\n");
         }
     }
 
@@ -591,7 +589,7 @@ void gfx::set_with_delay(unsigned adr, char val) {
 }
 
 void gfx::set(unsigned adr, char val) {
-    fprintf(log, "set $%04x $%02hhx\n", adr, val);
+    debug_print(log, "set $%04x $%02hhx\n", adr, val);
 
     switch (adr) {
 
@@ -760,45 +758,45 @@ void gfx::cycle() {
     auto visible_line = ver_cnt < 240;
 
     if (hor_cnt == 0 and visible_line) {
-        // fprintf(log, "palette\n");
+        // debug_print(log, "palette\n");
         // for (auto j = 0u; j < 2; j++) {
         //     for (auto i = 0u; i < 16; i++) {
-        //         fprintf(log, " $%02hhx", get_palette_entry(16 * j + i));
+        //         debug_print(log, " $%02hhx", get_palette_entry(16 * j + i));
         //     }
-        //     fprintf(log, "\n");
+        //     debug_print(log, "\n");
         // }
         sprite_0_y_in_range = sprite_0_y_in_range_next;
     }
 
     if (hor_cnt == 0 and ver_cnt == 0 and started) {
-        fprintf(log, "tmp_adr == $%04x\n", tmp_adr);
-        fprintf(log, "nt info\n");
+        debug_print(log, "tmp_adr == $%04x\n", tmp_adr);
+        debug_print(log, "nt info\n");
         for (auto i = 0u; i < 30; i++) {
             for (auto j = 0u; j < 32; j++) {
-                fprintf(log, " %02hhx", read_mem(0x2000u + i * 32 + j));
+                debug_print(log, " %02hhx", read_mem(0x2000u + i * 32 + j));
             }
-            fprintf(log, "\n");
+            debug_print(log, "\n");
         }
 
-        // fprintf(log, "at table\n");
+        // debug_print(log, "at table\n");
         // for (auto i = 0u; i < 8; i++) {
         //     for (auto j = 0u; j < 8; j++) {
-        //         fprintf(log, " %02hhx", read_mem(0x23c0u + i * 8 + j));
+        //         debug_print(log, " %02hhx", read_mem(0x23c0u + i * 8 + j));
         //     }
-        //     fprintf(log, "\n");
+        //     debug_print(log, "\n");
         // }
 
-        fprintf(log, "oam\n");
+        debug_print(log, "oam\n");
         auto i = 0u;
         while (i < 256) {
             for (auto j = 0u; j < 4; j++) {
                 for (auto k = 0u; k < 4; k++) {
-                    fprintf(log, " %02hhx ", oam[i]);
+                    debug_print(log, " %02hhx ", oam[i]);
                     i++;
                 }
-                fprintf(log, " | ");
+                debug_print(log, " | ");
             }
-            fprintf(log, "\n");
+            debug_print(log, "\n");
         }
     }
 
@@ -834,7 +832,7 @@ void gfx::cycle() {
             for (auto i = 0u; i < 8u; i++) {
                 if (spr_x[i] > 0) {
                     spr_x[i]--;
-                    // fprintf(log, "spr_x[%u] = %02hhx\n", i, spr_x[i]);
+                    // debug_print(log, "spr_x[%u] = %02hhx\n", i, spr_x[i]);
                     if (spr_x[i] == 0) {
                         spr_active[i] = true;
                     }
@@ -896,12 +894,12 @@ void gfx::cycle() {
         hor_cnt = 0;
         ver_cnt++;
         if (ver_cnt < 240 or ver_cnt == prerender_line) {
-            fprintf(log, "y = %u\n", ver_cnt);
+            debug_print(log, "y = %u\n", ver_cnt);
         }
         if (ver_cnt == scanline_count) {
             ver_cnt = 0;
             frame_idx++;
-            fprintf(log, "kadr nomer %lu\n", frame_idx);
+            debug_print(log, "kadr nomer %lu\n", frame_idx);
             in_vblank = false;
         }
     }
